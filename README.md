@@ -84,3 +84,6 @@ Please cite us if this repo helps your work!
 
 ## Licence
 GNU General Public License v3.0
+
+
+## Dit is een beschrijving van alle aanpassingen die ik maak
