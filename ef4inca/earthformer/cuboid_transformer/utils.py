@@ -167,9 +167,9 @@ def _generalize_padding(x, pad_t, pad_h, pad_w, padding_type, t_pad_left=False):
         return F.interpolate(x.permute(0, 4, 1, 2, 3), size=(T + pad_t, H + pad_h, W + pad_w)).permute(0, 2, 3, 4, 1)
     else:
         if t_pad_left:
-            return F.pad(x, (0, 0, 0, pad_w, 0, pad_h, pad_t, 0))
+            return F.pad(x, (0, 0, 0, pad_h, 0, pad_w, pad_t, 0))
         else:
-            return F.pad(x, (0, 0, 0, pad_w, 0, pad_h, 0, pad_t))
+            return F.pad(x, (0, 0, 0, pad_h, 0, pad_w, 0, pad_t))
 
 
 def _generalize_unpadding(x, pad_t, pad_h, pad_w, padding_type):
