@@ -57,8 +57,8 @@ class kucukINCAdataset(Dataset):
         self.img_list = img_list
         print(f'num ims: {len(img_list)}')
         ##
-        self.h_zoom_seviri = 400 / 86  # 400 and 700 are INCA shape,
-        self.w_zoom_seviri = 700 / 150 # while 86 and 150 are SEVIRI shape for INCA domain!
+        # self.h_zoom_seviri = 400 / 86  # 400 and 700 are INCA shape,
+        # self.w_zoom_seviri = 700 / 150 # while 86 and 150 are SEVIRI shape for INCA domain!
         ##
         dat_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
         self.dem = h5py.File(dat_dir+'/data/Aux/matched_eu_dem.h5','r')['raster_data'][:,:]
