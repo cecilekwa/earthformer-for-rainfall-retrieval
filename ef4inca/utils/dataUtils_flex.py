@@ -69,6 +69,8 @@ class kucukINCAdataset(Dataset):
         self.lat = (self.lat - normDict['lat']['mean']) / normDict['lat']['std']
         self.lon = (self.lon - normDict['lon']['mean']) / normDict['lon']['std']
 
+        #test
+
     def __len__(self):
         # Denotes the number of batches per epoch
         return len(self.img_list)
