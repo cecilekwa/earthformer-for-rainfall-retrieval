@@ -8,16 +8,16 @@ the Earthformer for rainfall retrieval model  is a rainfall retrieval model that
 
 The data used in this research is listed below. 
 
-Input data
+**Input data**
 * Meteosat Second Generation (MSG) satellite images of the Spinning Enhanced Visual Infrared Imager (SEVIRI)
 * Digital Elevation model (DEM)
 * Longitude, latitude grid
 * Time of the Day, Day of the Year
 
-Reference data
+**Reference data**
 * IMERG-Final
 
-Benchmark data
+**Benchmark data**
 * IMERG-Early
 
 ## Installation and Setup
