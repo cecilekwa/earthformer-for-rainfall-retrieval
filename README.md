@@ -106,7 +106,7 @@ The SEVIRI data is normalized for better performance of the model. The IMERG dat
 
 ## Model architecture
 
-This table outlines the layers of the model, detailing how data flows through the network along with its dimensions.
+This table provides an overview of the model layers, showing the transformations applied at each stage, including changes in resolution and channel dimensions.
 
 | **Block** | **Layer** | **Resolution** | **Channels** |
 |-----------|----------|---------------|--------------|
@@ -122,8 +122,6 @@ This table outlines the layers of the model, detailing how data flows through th
 | **Cuboid Attention Block x 1** | LayerNorm <br> Cuboid (T,1,1) <br> FFN <br> LayerNorm <br> Cuboid (1,H,1) <br> FFN <br> LayerNorm <br> Cuboid (1,1,W) <br> FFN | 42 × 31 | 256 |
 | **2D CNN + Upsampler** | Nearest Neighbour Interpolation <br> Conv3 × 3 <br> GroupNorm16 <br> LeakyReLU | 21 × 16 → 42 × 31 <br> 42 × 31 <br> 42 × 31 <br> 42 × 31 | 256 → 64 <br> 64 <br> 64 <br> 64 |
 
-This table provides an overview of the model layers, showing the transformations applied at each stage, including changes in resolution and channel dimensions.
-
 
 ## Running the model
 In order to run the trained model for inference, download the pretrained weights provided in [https://doi.org/10.5281/zenodo.13768228](https://doi.org/10.5281/zenodo.13768228) and unzip the file `ef_inca_multisource2precip.pt` into `trained_ckpt`. 
@@ -135,6 +133,8 @@ python train_cuboid_inca_invLinear_v24.py --pretrained
 ```
 It is possible to use the repository on machinces without a GPU. While it's not feasible to train the model without a GPU, it's actually okay to use CPUs for inference. In case of CPU usage, it's advisable to use lightweight, optimized approximators like [ONNX](https://onnx.ai/).
 
+## Train model from scratch
+
 In order to train the model from scratch, run:
 ```bash
 cd ef4inca
@@ -142,8 +142,20 @@ python train_cuboid_inca_invLinear_v24.py
 ```
 to train the model with default parameters and original structure described in the manuscript. Modifying the model structure by creating new config files is the best way to experiment further.
 
+In the ***train_cuboid_inca_invLinear_v24.py*** defines what happens during the training of your model. PyTorch Lightning is used for efficient training. PyTorch Lightning sets requirements to how you name certain functions and is linked to the process and or phase your model is in. 
+
+For example; The *on_validation_epoch_end* function defines what happens at the end of a validation epoch and *training_step* function defines what happens every step of the training.
+
+In the utils directory
+The ***dataUtils_flex.py*** file prepares your data so it can be used for training, testing and validation. Data is normalized, before it is used as input for the model and it is reformatted it correct tensors. 
+
+The ***VisUtils_elegant.py*** file defines how your data is plotted during training, validation and testing. 
+
+In the ***FixedValues.py*** you can set the mean and standard deviation of your data, which is used in the ***dataUtils_flex.py***. 
+
+
 ## Credits
-This repository is built on top of the repositories: [EF-Sat2Rad](https://github.com/caglarkucuk/earthformer-satellite-to-radar/) and [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer)
+This repository is built on top of the repositories: [EF4INCA](https://github.com/caglarkucuk/earthformer-multisource-to-inca/tree/main/data)) and [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer).
 
 
 ## Cite
