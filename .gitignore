@@ -3,7 +3,6 @@ experiments
 *.pt
 *pyc
 *DUMP*
-*.ipynb
 steps_output
 
 # Byte-compiled / optimized / DLL files
