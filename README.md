@@ -93,6 +93,10 @@ The script to split the data into a training, test and validation dataset and sa
 ### 5) Normalizing data
 The SEVIRI data is normalized for better performance of the model. The IMERG data is log transformed in the dataUtils script of the model. To obtain the mean and standard deviation of the entire dataset of the seviri dataset the ***norm_values_input_data.ipynb*** can be used. 
 
+## The model explained
+![image](https://github.com/user-attachments/assets/5f27df0f-b318-4a78-a23f-a5b23fb07641)
+
+
 
 ## Running the model
 In order to run the trained model for inference, download the pretrained weights provided in [https://doi.org/10.5281/zenodo.13768228](https://doi.org/10.5281/zenodo.13768228) and unzip the file `ef_inca_multisource2precip.pt` into `trained_ckpt`. 
