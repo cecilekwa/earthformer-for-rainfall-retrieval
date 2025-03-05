@@ -52,31 +52,31 @@ tar -xvf /PATH/TO/ZENODO/DOWNLOAD/test_sampled.tar.gz --strip-components=2 -C da
 
 ## Pre-processing the data
 
-### Dowloading the data
+### 1) Dowloading the data
 The model uses fully open source data to train the model on. 
 
 * The model uses SEVIRI channel data as input, which can be downloaded from the EUMDAC database using the EUMDAC python library. The script ***seviri_retrieval_nat_to_h5.ipynb*** can be used for this. Note that using this script your data is also already reprojected. 
 
-* The model is trained on IMERG-Final, which can be downloaded using the GPM-API python library with the ***imerg_retrieval.ipynb**** script. 
+* The model is trained on IMERG-Final, which can be downloaded using the GPM-API python library with the ***imerg_retrieval.ipynb*** script. 
 
 * Other data that is used is the Digital Elevation Model (DEM), which you can be obtained from the NASA database and the longitude and latitude grid. 
 
 * The benchmark IMERG-Early can be downloaded using the same script as the ***imerg_retrieval.ipynb*** script. 
 
-### Resampling the data
+### 2) Resampling the data
 * If the SEVIRI data was not reprojected yet, the ***seviri_retrieval_reproject_nat_to_hdf5.ipynb*** can be used to reproject the geostationary projection into WGS84 projection.
 * The IMERG data can be resampled to the same resolution as the SEVIRI data using the ***imerg_resampling.ipynb*** script. 
 
-### Selecting data
+### 3) Selecting data
 The selection of data is based on the values of the IMERG data. It is done in a two-step approach.
-•	First, all the selection criteria are saved into a dataframe, so later, the selection criteria can be decided upon more iteratively. This is done using the ***1.retrieve_selection_criteria.ipynb*** script. 
-•	Secondly, the selected timestamps are used to merge the SEVIRI data and IMERG data into one file, which is currently required for using the model. This is done, using the ***2.event_selection_merging_files.ipynb***.
+* First, all the selection criteria are saved into a dataframe, so later, the selection criteria can be decided upon more iteratively. This is done using the ***1.retrieve_selection_criteria.ipynb*** script. 
+* Secondly, the selected timestamps are used to merge the SEVIRI data and IMERG data into one file, which is currently required for using the model. This is done, using the ***2.event_selection_merging_files.ipynb***.
 
-### Splitting data
+### 4) Splitting data
 Although it is advisable to use a different splitting method compared to what was used in this research it was left here for reproducibility. 
 The script to split the data into a training, test and validation dataset and save it into the correct directories using the script ***train_test_val_splitting.ipynb***.
 
-### Normalizing data
+### 5) Normalizing data
 The SEVIRI data is normalized for better performance of the model. The IMERG data is log transformed in the dataUtils script of the model. To obtain the mean and standard deviation of the entire dataset of the seviri dataset the ***norm_values_input_data.ipynb*** can be used. 
 
 
