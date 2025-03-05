@@ -1,10 +1,24 @@
-# Earthformer for multi-source-to-precipitation nowcasting for INCA domain (EF4INCA)
+# Earthformer for rainfall retrieval
 
 ## Introduction
 
-Welcome to the EF4INCA repository, which is accompanying our work [Integrated nowcasting of convective precipitation with Transformer-based models using multi-source data](https://arxiv.org/abs/2409.10367)
+Welcome to the Earthformer for rainfall repository, which is accompanying the master thesis work [Implementation of a space-time transformer retrieval algorithm for high rainfall rates from the Meteosat satellite applied in Africa]([https://arxiv.org/abs/2409.10367](https://repository.tudelft.nl/record/uuid:0b37d583-e915-4a2a-9e60-55e250f62421))
 
-EF4INCA is a precipitation nowcasting model that takes data from multiple sources (e.g., satellite-, groun-based observations, modelled data). It is a modified version of the [EF-Sat2Rad](https://github.com/caglarkucuk/earthformer-satellite-to-radar/) model, which heavily borrows from the original [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer) package. 
+the Earthformer for rainfall retrieval model  is a rainfall retrieval model that takes data from multiple open sources.It is a modified version of the [EF4INCA](https://github.com/caglarkucuk/earthformer-multisource-to-inca/tree/main/data) model, which heavily borrows from the original [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer) package. 
+
+The data used in this research is listed below. 
+
+Input data
+* Meteosat Second Generation (MSG) satellite images of the Spinning Enhanced Visual Infrared Imager (SEVIRI)
+* Digital Elevation model (DEM)
+* Longitude, latitude grid
+* Time of the Day, Day of the Year
+
+Reference data
+* IMERG-Final
+
+Benchmark data
+* IMERG-Early
 
 ## Installation and Setup
 
