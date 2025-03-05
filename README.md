@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Welcome to the Earthformer for rainfall repository, which is accompanying the master thesis work [Implementation of a space-time transformer retrieval algorithm for high rainfall rates from the Meteosat satellite applied in Africa]([https://arxiv.org/abs/2409.10367](https://repository.tudelft.nl/record/uuid:0b37d583-e915-4a2a-9e60-55e250f62421))
+Welcome to the Earthformer for rainfall repository, which is accompanying the master thesis work [Implementation of a space-time transformer retrieval algorithm for high rainfall rates from the Meteosat satellite applied in Africa](https://repository.tudelft.nl/record/uuid:0b37d583-e915-4a2a-9e60-55e250f62421)
 
 the Earthformer for rainfall retrieval model  is a rainfall retrieval model that takes data from multiple open sources.It is a modified version of the [EF4INCA](https://github.com/caglarkucuk/earthformer-multisource-to-inca/tree/main/data) model, which heavily borrows from the original [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer) package. 
 
