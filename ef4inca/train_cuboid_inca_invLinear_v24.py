@@ -1,6 +1,3 @@
-"""Let's drop the first two satellite channels and see their implications!
-"""
-
 #### Import modules!
 import warnings
 from typing import Union, Dict
@@ -15,11 +12,14 @@ import subprocess
 import h5py
 import os
 import argparse
+import logging
 
 import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import LambdaLR
+from torch.nn.utils import clip_grad_norm_
 import torchmetrics
 
 import pytorch_lightning as pl
@@ -47,15 +47,60 @@ from utils.fixedValues import bestSamples, worstSamples, randSamples
 from utils.dataUtils_flex import kucukINCAdataModule
 
 
+
 #### Set some directories/variables
 _curr_dir = os.path.realpath(os.path.dirname(os.path.realpath(__file__)))
 exps_dir = os.path.join(os.path.dirname(_curr_dir), "experiments") # Move one dir up and create a new directory, independent!
 
 ##### Any accelerator? ####
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 torch.set_float32_matmul_precision('medium')
                                    
 pytorch_state_dict_name = "ef_inca_multisource2precip.pt"
+
+class GradientNormLogger(Callback):
+    def on_after_backward(self, trainer, pl_module):
+        """
+        Hook called after the backward pass to log the gradient norms per layer.
+        """
+        grad_norms_pre_clip = {}  # Store pre-clipping norms
+        #grad_norms_post_clip = {}  # Store post-clipping norms
+        total_norm_pre_clip = 0
+        #total_norm_post_clip = 0
+
+        for name, param in pl_module.named_parameters():
+            if param.grad is not None:  # Ensure the parameter has a gradient
+                # Pre-clipping norm
+                norm_pre_clip = param.grad.data.norm(2).item()
+                grad_norms_pre_clip[f"grad_norm_pre_clip_{name.replace('.', '_')}"] = norm_pre_clip
+                total_norm_pre_clip += norm_pre_clip ** 2
+
+        # Compute total norms
+        total_norm_pre_clip = total_norm_pre_clip ** 0.5
+
+        # Log per-layer gradient norms
+        for name, norm in grad_norms_pre_clip.items():
+            pl_module.log(name, norm, on_step=True, on_epoch=False)
+
+        # Log total gradient norms
+        pl_module.log("grad_norm_total_pre_clip", total_norm_pre_clip, on_step=True, on_epoch=False)
+
+        # Log the GradScaler's state (the scaling factor)
+        if trainer.scaler is not None:
+            scale_factor = trainer.scaler.get_scale()  # Get the current scale factor from the scaler
+            pl_module.log("grad_scaler_scale", scale_factor, on_step=True, on_epoch=False)
+
+class FinalGradientLogger(pl.Callback):
+    def on_before_optimizer_step(self, trainer, pl_module, optimizer):
+        total_norm = 0.0
+        for name, param in pl_module.named_parameters():
+            if param.grad is not None:
+                norm = param.grad.data.norm(2).item()
+                total_norm += norm ** 2
+                pl_module.log(f"grad_norm_final_{name.replace('.', '_')}", norm, on_step=True, on_epoch=False)
+        total_norm = total_norm ** 0.5
+        pl_module.log("grad_norm_total_final", total_norm, on_step=True, on_epoch=False)
+
 
 class CuboidEF4INCAPLModule(pl.LightningModule):
 
@@ -202,7 +247,11 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
         ## ADDITION FOR INVERSE LINEAR WEIGHTING OF LOSS FUNCTION! 
         self.wgt = self.invLinWeight(self.out_len)
         self.runFSS = oc.logging.computeFSS
-        self.scale_list = oc.dataset.scale_list 
+        self.scale_list = oc.dataset.scale_list
+
+         # Initialize a logger for file paths
+        self.data_logger = self._initialize_data_logger()
+        self.NaN_logger = self._initialize_NaN_logger()
 
     def invLinWeight(self, t):
         '''Rationale is to inversely scale the loss values across time dimension, i.e., with [24, 23, 22, ..., 1] for a 24-step prediction.
@@ -213,6 +262,30 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
             self.wgt.append(t-i)
         self.wgt = np.array(self.wgt)
         return torch.from_numpy(self.wgt.astype(np.float32)).to(device).reshape((-1, 1, 1, 1))
+
+    def _initialize_data_logger(self):
+        """Initialize a separate logger for logging data being processed."""
+        log_file_path = os.path.join(self.save_dir, "data_processing.log")
+        logger = logging.getLogger("DataLogger")
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:  # Avoid duplicate handlers
+            handler = logging.FileHandler(log_file_path)
+            formatter = logging.Formatter('%(asctime)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        return logger
+
+    def _initialize_NaN_logger(self):
+        """Initialize a separate logger for logging NaN data being processed."""
+        log_file_path = os.path.join(self.save_dir, "data_NaN.log")
+        logger = logging.getLogger("NaNLogger")
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:  # Avoid duplicate handlers
+            handler = logging.FileHandler(log_file_path)
+            formatter = logging.Formatter('%(asctime)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        return logger
 
     def configure_save(self, cfg_file_path=None):
         self.save_dir = os.path.join(exps_dir, self.save_dir)
@@ -398,6 +471,7 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
         oc.plot_stride = dataset_oc.plot_stride
         return oc
 
+
     def configure_optimizers(self):
         # Configure the optimizer. Disable the weight decay for layer norm weights and all bias terms.
         decay_parameters = get_parameter_names(self.torch_nn_module, [nn.LayerNorm])
@@ -411,20 +485,33 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
                        if n not in decay_parameters],
             'weight_decay': 0.0
         }]
-
+    
         if self.oc.optim.method == 'adamw':
             optimizer = torch.optim.AdamW(params=optimizer_grouped_parameters,
                                           lr=self.oc.optim.lr,
                                           weight_decay=self.oc.optim.wd)
         else:
             raise NotImplementedError
-        lr_scheduler = OneCycleLR(optimizer, 
-                max_lr = self.oc.optim.lr,
-                total_steps=120,   #### FATAL!!!!!
-                pct_start = 0.15,  #### FATAL!!!!!
-                final_div_factor = 10,
-                anneal_strategy = 'cos')
-        return [optimizer], [lr_scheduler]
+    
+        # Modified OneCycleLR
+        lr_scheduler = OneCycleLR(optimizer,
+                                  max_lr=self.oc.optim.lr,
+                                  total_steps=20209, #
+                                  div_factor = 25,
+                                  pct_start=self.oc.optim.warmup_percentage,
+                                  final_div_factor= 10,  
+                                  three_phase = False,
+                                  anneal_strategy='cos'  
+                                 )
+
+        lr_scheduler_config = {
+            'scheduler': lr_scheduler,
+            'interval': 'step',
+            'frequency': 1,
+        }
+    
+        return [optimizer], [lr_scheduler_config]
+
 
     def set_trainer_kwargs(self, **kwargs):
         r"""
@@ -451,6 +538,10 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
                                         patience=self.oc.optim.early_stop_patience,
                                         verbose=False,
                                         mode=self.oc.optim.early_stop_mode), ]
+
+        # Add Gradient Norm Logger callback
+        callbacks += [GradientNormLogger()]
+        callbacks += [FinalGradientLogger()]
 
         logger = kwargs.pop("logger", [])
         tb_logger = pl_loggers.TensorBoardLogger(save_dir=self.save_dir)
@@ -484,6 +575,7 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
         ret.update(oc_trainer_kwargs)
         ret.update(kwargs)
         return ret
+    
 
     @classmethod
     def get_total_num_steps(
@@ -541,11 +633,81 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
         output = self.torch_nn_module(in_seq)
         ## Keep loss values per pixel and time step!
         loss = F.mse_loss(output, out_seq, reduction="none")
-        # Multiply the loss with the weight along time dimension!
-        loss = loss * self.wgt
-        ## Return mean of the scaled loss value!
         loss = torch.mean(loss)
         return output, loss
+
+    # def forward(self, in_seq, out_seq):
+    # """
+    # Compute the Balanced Loss with inverse time weighting applied before calculating B-MSE and B-MAE.
+    # """
+    # # Get model predictions
+    # output = self.torch_nn_module(in_seq)
+
+    # # Compute the weights based on observed rainfall intensity
+    # R = out_seq  # Observed rainfall intensity
+    # spatial_weights = torch.where(
+    #     R <= 1,
+    #     torch.tensor(1.0, device=R.device),
+    #     torch.where(
+    #         R <= 30,
+    #         R,
+    #         torch.tensor(30.0, device=R.device)
+    #     )
+    # )
+
+    # # Apply inverse time weighting
+    # inverse_weights = self.wgt.to(self.device)  # Shape: [T, 1, 1, 1]
+
+    # # Compute B-MSE with time weighting
+    # mse_loss = torch.mean(inverse_weights * spatial_weights * (output - out_seq) ** 2)
+
+    # # Compute B-MAE with time weighting
+    # mae_loss = torch.mean(inverse_weights * spatial_weights * torch.abs(output - out_seq))
+
+    # # Balanced Loss (B-MSE + B-MAE)
+    # loss = mse_loss + mae_loss
+
+    # return output, loss
+
+
+    # def forward(self, in_seq, out_seq):
+    #     """
+    #     Compute the Balanced Loss (B-MSE + B-MAE) for the model predictions.
+    #     Args:
+    #         in_seq: Input sequence to the model (e.g., past rainfall data).
+    #         out_seq: Ground truth (observed rainfall intensity).
+    #     Returns:
+    #         output: Model predictions.
+    #         loss: Balanced loss value.
+    #     """
+    #     # Get model predictions
+    #     output = self.torch_nn_module(in_seq)
+        
+    #     # Compute the weights based on observed rainfall intensity
+    #     # R = 10 ** out_seq  # Observed rainfall intensity transformed back to real values
+    #     R = torch.pow(10, out_seq) # Observed rainfall intensity transformed back to real values
+    #     max_weights = 10
+    #     weights = torch.where(
+    #         R <= 1, 
+    #         torch.tensor(1.0, device=R.device),
+    #         torch.where(
+    #             R <= max_weights, 
+    #             R, 
+    #             torch.tensor(max_weights, device=R.device)
+    #         )
+    #     )
+        
+    #     # Compute B-MSE
+    #     mse_loss = torch.mean(weights * (output - out_seq) ** 2)
+        
+    #     # Compute B-MAE
+    #     mae_loss = torch.mean(weights * torch.abs(output - out_seq))
+        
+    #     # Combined Balanced Loss
+    #     loss = mse_loss + mae_loss
+        
+    #     return output, loss
+
 
     def training_step(self, batch, batch_idx):
         x = batch['sample_past'].contiguous()
@@ -555,6 +717,21 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
         y_hat, loss = self(x, y)
         micro_batch_size = x.shape[self.layout.find("N")]
         data_idx = int(batch_idx * micro_batch_size)
+        
+        self.data_logger.info(f"Processing data_idx: {data_idx}, file(s): {tmp_name}, Loss: {loss.item()}")
+
+        if torch.isnan(x).any():
+            print(f'NaN detected in input sequence with file(s): {tmp_name}')
+            
+        if torch.isinf(x).any():
+            print(f'Inf detected in input sequence with file(s): {tmp_name}')
+
+        if torch.isnan(y).any():
+            print(f'NaN detected in target sequence with file(s): {tmp_name}')
+
+        if torch.isinf(y).any():
+            print(f'Inf detected in target sequence with file(s): {tmp_name}')
+        
         self.save_vis_step_end(
             data_idx=data_idx,
             in_seq=x,
@@ -569,13 +746,18 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
                  on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
+
     def validation_step(self, batch, batch_idx):
         x = batch['sample_past'].contiguous()
         y = batch['sample_future'].contiguous()
-        tmp_name = batch['name']
+        tmp_name = batch['name']  # Assume this contains the file names or identifiers
         ##
         micro_batch_size = x.shape[self.layout.find("N")]
         data_idx = int(batch_idx * micro_batch_size)
+
+        target_nan = []
+        pred_nan = []
+
         if not self.eval_example_only or data_idx in self.val_example_data_idx_list:
             y_hat, _ = self(x, y)
             self.save_vis_step_end(
@@ -586,9 +768,42 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
                 mode="val",
                 title=tmp_name
             )
-            step_mse = self.valid_mse(y_hat, y)
-            step_mae = self.valid_mae(y_hat, y)
+
+                    # Check for NaN or Inf in predictions/targets
+            if torch.isnan(y_hat).any() or torch.isinf(y_hat).any():
+                print(f"NaN or Inf detected in predictions at data_idx {data_idx}, file(s): {tmp_name}")
+                #pred_nan.append(data_idx)
+                self.save_vis_step_end(
+                    data_idx=data_idx,
+                    in_seq=x,
+                    target_seq=y,
+                    pred_seq=y_hat,
+                    mode="val",
+                    title=tmp_name
+                )                 
+            if torch.isnan(y).any() or torch.isinf(y).any():
+                print(f"NaN or Inf detected in targets at data {data_idx}, file(s): {tmp_name}")
+                #target_nan.append(data_idx)
+                self.save_vis_step_end(
+                    data_idx=data_idx,
+                    in_seq=x,
+                    target_seq=y,
+                    pred_seq=y_hat,
+                    mode="val",
+                    title=tmp_name
+                )    
+
+            
+            # Step-level metrics (functional call)
+            step_mse = self.valid_mse(y_hat, y)  # Batch MSE
+            step_mae = self.valid_mae(y_hat, y)  # Batch MAE
+    
+            # Epoch-level metrics (stateful updates)
+            self.valid_mse.update(y_hat, y)  # Update cumulative MSE
+            self.valid_mae.update(y_hat, y)  # Update cumulative MAE
             self.valid_score.update(y_hat, y)
+    
+            # Log step-level metrics
             self.log('valid_frame_mse_step', step_mse,
                      prog_bar=True, on_step=True, on_epoch=False)
             self.log('valid_frame_mae_step', step_mae,
@@ -615,6 +830,7 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
                                   mae=valid_mae,
                                   mode="val")
 
+
     def test_step(self, batch, batch_idx):
         x = batch['sample_past'].contiguous()
         y = batch['sample_future'].contiguous()
@@ -622,6 +838,10 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
 
         micro_batch_size = x.shape[self.layout.find("N")]
         data_idx = int(batch_idx * micro_batch_size)
+
+        target_nan = []
+        pred_nan = []
+        
         if not self.eval_example_only or data_idx in self.test_example_data_idx_list:
             y_hat, _ = self(x, y)
             if self.runFSS:
@@ -637,6 +857,31 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
                 mode="test",
                 title=tmp_name
             )
+
+                    # Check for NaN or Inf in predictions/targets
+            if torch.isnan(y_hat).any() or torch.isinf(y_hat).any():
+                print(f"NaN or Inf detected in predictions at data_idx {data_idx}, file(s): {tmp_name}")
+                #pred_nan.append(data_idx)
+                self.save_vis_step_end(
+                    data_idx=data_idx,
+                    in_seq=x,
+                    target_seq=y,
+                    pred_seq=y_hat,
+                    mode="val",
+                    title=tmp_name
+                )                 
+            if torch.isnan(y).any() or torch.isinf(y).any():
+                print(f"NaN or Inf detected in targets at data {data_idx}, file(s): {tmp_name}")
+                #target_nan.append(data_idx)
+                self.save_vis_step_end(
+                    data_idx=data_idx,
+                    in_seq=x,
+                    target_seq=y,
+                    pred_seq=y_hat,
+                    mode="val",
+                    title=tmp_name
+                )  
+                
             step_mse = self.test_mse(y_hat, y)
             step_mae = self.test_mae(y_hat, y)
             self.test_score.update(y_hat, y)
@@ -645,19 +890,19 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
             self.log('test_frame_mae_step', step_mae,
                      prog_bar=True, on_step=True, on_epoch=False)
             ## Save predictions for selected samples!
-            shortName = tmp_name[0].split('/')[-1][:-3]
-            if shortName in bestSamples or shortName in worstSamples or shortName in randSamples:
-                # Save it!
-                assert y.shape[0] == 1, "Not implemented for batch size>1!"
-                ## Ensure the tensors are in float32
-                y = y.to(torch.float32)
-                y_hat = y_hat.to(torch.float32)
-                # Denorm and detach while backtransforming!
-                y = torch.pow(10,y).detach().cpu().numpy()
-                y_hat = torch.pow(10,y_hat).detach().cpu().numpy()
-                with h5py.File(self.testOutput_save_dir + '/' + shortName + '.h5', 'w') as hf:
-                    hf.create_dataset('y', data=y[0,:,:,:,0])
-                    hf.create_dataset('y_hat', data=y_hat[0,:,:,:,0])
+            shortName = tmp_name[0].split('/')[-1][:-3] 
+            # if shortName in bestSamples or shortName in worstSamples or shortName in randSamples:
+                    #Save it!
+            assert y.shape[0] == 1, "Not implemented for batch size>1!"
+            ## Ensure the tensors are in float32
+            y = y.to(torch.float32)
+            y_hat = y_hat.to(torch.float32)
+            # Denorm and detach while backtransforming!
+            y = torch.pow(10,y).detach().cpu().numpy()
+            y_hat = torch.pow(10,y_hat).detach().cpu().numpy()
+            with h5py.File(self.testOutput_save_dir + '/' + shortName + '.h5', 'w') as hf:
+                hf.create_dataset('y', data=y[0,:,:,:,0])
+                hf.create_dataset('y_hat', data=y_hat[0,:,:,:,0])
         return None
 
     def on_test_epoch_end(self):
@@ -742,19 +987,59 @@ class CuboidEF4INCAPLModule(pl.LightningModule):
                     label=self.oc.logging.logging_prefix,
                     )
 
+    def save_vis_step_NaN_Inf(
+        self,
+        data_idx: int,
+        in_seq: torch.Tensor,
+        target_seq: torch.Tensor,
+        pred_seq: torch.Tensor,
+        mode: str = "train",
+        title: str = None,
+    ):
+        r"""
+        Parameters
+        ----------
+        data_idx:   int
+            data_idx == batch_idx * micro_batch_size
+        """
+        if self.local_rank == 0:
+            if torch.isnan(in_seq).any() or torch.isinf(in_seq).any or torch.isnan(target_seq).any() or toch.isinf(target_seq).any():
+                print(f"NaN or inf detected in in_seq or target_seq at data_idx {data_idx}. Saving visual results.")
+                
+                # Save the visual results
+                save_example_vis_results(
+                    save_dir=self.example_save_dir,
+                    save_prefix=f'{mode}_epoch_{self.current_epoch}_data_{data_idx}',
+                    in_seq=in_seq.detach().float().cpu().numpy(),
+                    target_seq=target_seq.detach().float().cpu().numpy(),
+                    pred_seq=pred_seq.detach().float().cpu().numpy(),
+                    title=title,
+                    label=self.oc.logging.logging_prefix,
+                )
+                # else:
+                #     print(f"No NaN detected in in_seq at data_idx {data_idx}. Skipping save.")
+
+def parse_gpu_list(value):
+    if ',' in value:
+        return [int(x) for x in value.split(',')]
+    else:
+        return [int(value)]
+
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--save', type=str,
         help='Provide a name here if you want to save the results in a subdirectory under the experiments directory will be created anyway.',
         default='repotest')  # Prefix of the save dir
     parser.add_argument('--cfg', default='cfgs/cfg4inca.yaml', type=str)
-    parser.add_argument('--gpus', default=1, type=int)
+    # parser.add_argument('--gpus', default=1, type=int)
+    parser.add_argument('--gpus', type=parse_gpu_list, default=[0], help="GPU indices to use, e.g., '1' or '0,1'") # check if this works
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--pretrained', action='store_true',
                         help='Load pretrained checkpoints for test.')
     parser.add_argument('--ckpt_name', 
         default='last.ckpt', 
         type=str, help='The model checkpoint trained for EF4INCA.')
+    args = parser.parse_args()
     return parser
 
 def main():
@@ -768,7 +1053,7 @@ def main():
     else:
         dataset_oc = OmegaConf.to_object(CuboidEF4INCAPLModule.get_dataset_config())
         micro_batch_size = 1
-        total_batch_size = int(micro_batch_size * args.gpus)
+        total_batch_size = int(micro_batch_size * len(args.gpus))
         max_epochs = None
         seed = 0
     seed_everything(seed, workers=True)
@@ -776,7 +1061,7 @@ def main():
         dataset_oc=dataset_oc,
         )
     dm.setup()
-    accumulate_grad_batches = total_batch_size // (micro_batch_size * args.gpus)
+    accumulate_grad_batches = total_batch_size // (micro_batch_size * len(args.gpus)) #check if this is still working when using multiple GPU's
     total_num_steps = CuboidEF4INCAPLModule.get_total_num_steps(
         epoch=max_epochs,
         num_samples=dm.num_train_samples,
@@ -786,7 +1071,7 @@ def main():
         total_num_steps=total_num_steps,
         save_dir=args.save,
         oc_file=args.cfg)
-    # pl_module.to(device) # Let's see if this works...
+    pl_module.to(device) # Let's see if this works...
     trainer_kwargs = pl_module.set_trainer_kwargs(
         devices=args.gpus,
         accumulate_grad_batches=accumulate_grad_batches,
@@ -816,6 +1101,7 @@ def main():
                 ckpt_path = None
         else:
             ckpt_path = None
+            print('Device used :', device)
         trainer.fit(model=pl_module,
                     datamodule=dm,
                     ckpt_path=ckpt_path)
