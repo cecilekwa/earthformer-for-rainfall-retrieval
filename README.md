@@ -94,8 +94,35 @@ The script to split the data into a training, test and validation dataset and sa
 The SEVIRI data is normalized for better performance of the model. The IMERG data is log transformed in the dataUtils script of the model. To obtain the mean and standard deviation of the entire dataset of the seviri dataset the ***norm_values_input_data.ipynb*** can be used. 
 
 ## The model explained
+
+1) Earthformer architecture
+   A schematic overview of the Earthformer model, with the encoder on the left and the decoder on the right. The input tensor first passes through the 2D-CNN and Downsample layers, which reduce its spatial dimensions while increasing its channel dimensions through convolution, patch merging, tokenizing the data. The tokenized data is then processed by the cuboid attention block to capture contextual relationships. Here, M represents the number of hierarchical layers, while D denotes the number of cuboids within each layer. The model's upsampling is performed using Nearest Neighbour Interpolation.
+
 ![image](https://github.com/user-attachments/assets/5f27df0f-b318-4a78-a23f-a5b23fb07641)
 
+2) The Figure shows how the attention mechanism within the cuboid is decomposed in smaller cuboids, for computational efficiency. Within each cuboid the attention mechanism is run, while all cuboids also attend to the global parameter to ensure system wide dynamics are captured as well. After the attention mechanism has run, the decompased blocks are merged back together.
+
+3) The Figure shows different strategies to decompose the cuboid attention block.
+
+## Model architecture
+
+This table outlines the layers of the model, detailing how data flows through the network along with its dimensions.
+
+| **Block** | **Layer** | **Resolution** | **Channels** |
+|-----------|----------|---------------|--------------|
+| **Input** | - | 248 × 184 | 11 |
+| **2D CNN + Downsampler** | Conv3 × 3  <br> Conv3 × 3 <br> GroupNorm16 <br> LeakyReLU <br> PatchMerge <br> LayerNorm <br> Linear | 248 × 184 <br> 248 × 184 <br> 248 × 184 <br> 248 × 184 <br> 248 × 184 → 83 × 62 <br> 83 × 62 <br> 83 × 62 | 11 → 32 <br> 32 <br> 32 <br> 32 <br> 32 → 288 <br> 288 <br> 288 → 32 |
+| **2D CNN + Downsampler** | Conv3 × 3  <br> Conv3 × 3 <br> GroupNorm16 <br> LeakyReLU <br> PatchMerge <br> LayerNorm <br> Linear | 83 × 62 <br> 83 × 62 <br> 83 × 62 <br> 83 × 62 <br> 83 × 62 → 42 × 31 <br> 42 × 31 <br> 42 × 31 | 32 → 128 <br> 128 <br> 128 <br> 128 <br> 128 → 512 <br> 512 <br> 512 → 128 |
+| **Encoder Positional Embedding** | PosEmbed | 42 × 31 | 128 |
+| **Cuboid Attention Block x 1** | LayerNorm <br> Cuboid (T,1,1) <br> FFN <br> LayerNorm <br> Cuboid (1,H,1) <br> FFN <br> LayerNorm <br> Cuboid (1,1,W) <br> FFN | 42 × 31 | 128 |
+| **Downsampler** | PatchMerge <br> LayerNorm <br> Linear | 42 × 31 → 21 × 16 <br> 21 × 16 <br> 21 × 16 | 128 → 512 <br> 512 <br> 512 → 256 |
+| **Decoder Initial Positional Embedding** | PosEmbed | 21 × 16 | 256 |
+| **Cuboid Attention Block x 1** | LayerNorm <br> Cuboid (T,1,1) <br> FFN <br> LayerNorm <br> Cuboid (1,H,1) <br> FFN <br> LayerNorm <br> Cuboid (1,1,W) <br> FFN | 21 × 16 | 256 |
+| **Upsampler** | Nearest Neighbour Interpolation <br> Conv3 × 3 | 21 × 16 → 42 × 31 <br> 42 × 31 | 128 <br> 128 |
+| **Cuboid Attention Block x 1** | LayerNorm <br> Cuboid (T,1,1) <br> FFN <br> LayerNorm <br> Cuboid (1,H,1) <br> FFN <br> LayerNorm <br> Cuboid (1,1,W) <br> FFN | 42 × 31 | 256 |
+| **2D CNN + Upsampler** | Nearest Neighbour Interpolation <br> Conv3 × 3 <br> GroupNorm16 <br> LeakyReLU | 21 × 16 → 42 × 31 <br> 42 × 31 <br> 42 × 31 <br> 42 × 31 | 256 → 64 <br> 64 <br> 64 <br> 64 |
+
+This table provides an overview of the model layers, showing the transformations applied at each stage, including changes in resolution and channel dimensions.
 
 
 ## Running the model
