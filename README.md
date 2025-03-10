@@ -53,7 +53,7 @@ It is possible to download input dataset, used in for training the model for fur
 ### 1) Dowloading the data
 The model uses fully open source data to train the model on. 
 
-* The model uses SEVIRI channel data as input, which can be downloaded from the EUMDAC database using the EUMDAC python library. The script  `preprocess_data/1.data_retrieval/seviri_retrieval_nat_to_h5.ipynb` can be used for this. Note that using this script your data is also already reprojected. When it is desired to keep those processes separated, the  `preprocess_data/1.data_retrieval/seviri_retrieval_no_reprojection/seviri_retrieval_native..ipynb` can be used. 
+* The model uses SEVIRI channel data as input, which can be downloaded from the EUMDAC database using the EUMDAC python library. The script  `preprocess_data/1.data_retrieval/seviri_retrieval_nat_to_h5.ipynb` can be used for this. Note that using this script your data is also already reprojected. When it is desired to keep those processes separated, the  `preprocess_data/1.data_retrieval/seviri_retrieval_no_reprojection/seviri_retrieval_native.ipynb` can be used. 
 
 * The model is trained on IMERG-Final, which can be downloaded using the GPM-API python library with the `preprocess_data/1.data_retrieval/imerg_retrieval.ipynb` script. 
 
@@ -119,12 +119,43 @@ python train_cuboid_inca_invLinear_v24.py --pretrained
 
 ## Train model from scratch
 
+The trainings dataset used to train the model can be found in 
+* [https://doi.org/10.5281/zenodo.15000213](https://doi.org/10.5281/zenodo.15000213)
+* [https://doi.org/10.5281/zenodo.15000365](https://doi.org/10.5281/zenodo.15000365)
+* [https://doi.org/10.5281/zenodo.15000494](https://doi.org/10.5281/zenodo.15000494)
+
+Unzip the contents of the archives into `data/train`.
+
+And the validation dataset used during training the model can be found in
+* [ https://doi.org/10.5281/zenodo.15000674]( https://doi.org/10.5281/zenodo.15000674)
+
+Unzip the contents of the archive into `data/val`.
+
+
 In order to train the model from scratch, run:
 ```bash
 cd ef4inca
 python train_cuboid_inca_invLinear_v24.py
 ```
 to train the model with default parameters and original structure described in the manuscript. Modifying the model structure by creating new config files is the best way to experiment further.
+
+with 
+
+```bash
+cd ef4inca
+python train_cuboid_inca_invLinear_v24.py --gpus 0,1
+```
+
+you can train the model on multiple gpus when available. 
+
+Only using
+
+```bash
+cd ef4inca
+python train_cuboid_inca_invLinear_v24.py --gpus 0
+```
+
+allows you to specify which gpu you want to train your model on. 
 
 The `train_cuboid_inca_invLinear_v24.py` defines what happens during the training of your model. PyTorch Lightning is used for efficient training. PyTorch Lightning sets requirements to how you name certain functions and is linked to the process and or phase your model is in. 
 
@@ -137,12 +168,26 @@ The `utils/VisUtils_elegant.py` file defines how your data is plotted during tra
 
 In the `utils/FixedValues.py` you can set the mean and standard deviation of your data, which is used in the `utils/dataUtils_flex.py` and `utils/VisUtils_elegant.py`. 
 
+## Analysis
+
+In the manuscript the model is validated on IMERG-Final and ground station observations. The ground stations are not openly available, but can be requested at [TAHMO](https://tahmo.org/) and at [GMET](https://www.meteo.gov.gh/). 
+
+The validation can be split in two different validations
+* In one IMERG-Final serves as the reference truth and it validated on the test-dataset and can be found in `analysis/target_validation`
+* In the other one the ground station observations serve as the reference truth and the model is validated on the year 2022 `analysis/ground_station_validation`
+
+Further visualization of the models, creating plots over multiple timesteps and making gifs of the model can be found in `analysis/visualization`
+
+
+
+
+
 
 ## Credits
 This repository is built on top of the repositories: [EF4INCA](https://github.com/caglarkucuk/earthformer-multisource-to-inca/tree/main/data)) and [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer).
 
 
-## Cite
+<!-- ## Cite
 Please cite us if this repo helps your work!
 ```
 @article{Kucuk2024,
@@ -151,7 +196,7 @@ Please cite us if this repo helps your work!
    doi = {10.48550/arXiv.2409.10367},
    year = {2024}
 }
-``` 
+```  -->
 
 ## Licence
 GNU General Public License v3.0
