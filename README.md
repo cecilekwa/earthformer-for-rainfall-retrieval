@@ -45,24 +45,8 @@ conda activate ef4inca_2024
 It is possible to download input dataset, used in for training the model for further model development or use the test dataset and pretrained model weights to reproduce the estimations. When it is desired to apply pretrained model to different locations and/or timesteps, 
 
 
-
-<!-- <!-- - The complete dataset (130GB) is available in [https://doi.org/10.5281/zenodo.13740314](https://doi.org/10.5281/zenodo.13740314). Once downloaded, unzip the dataset to the corresponding directories in `data` with no parent directory passed from the archive, e.g.:
-```bash
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/Aux.tar.gz --strip-components=2 -C data/Auxillary/
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/val.tar.gz --strip-components=2 -C data/val/
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/test.tar.gz --strip-components=2 -C data/test/
-
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/train_2019.tar.gz --strip-components=3 -C data/train/
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/train_2020.tar.gz --strip-components=3 -C data/train/
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/train_2021.tar.gz --strip-components=3 -C data/train/
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/train_2022.tar.gz --strip-components=3 -C data/train/ -->
-```  -->
-
 - It is possible to download the pretrained model weights, auxillary data and test dataset (13.3GB) provided in [https://doi.org/10.5281/zenodo.14993091](https://doi.org/10.5281/zenodo.14993091), just unzip contents of the archive of the test dataset to `data/test`, the auxillary dataset to 'data/auxillary' and the desired pretrained model weights *ef_inca_multisource2precip.pt* of either the Earthformer model trained with MSE loss function or the balanced weighting loss function in the 'trained_ckpt' datafolder, without 
 
-<!-- ```bash
-tar -xvf /PATH/TO/ZENODO/DOWNLOAD/test_sampled.tar.gz --strip-components=2 -C data/test/
-``` -->
 
 ## Pre-processing the data
 
