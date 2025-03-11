@@ -162,7 +162,7 @@ The `train_cuboid_inca_invLinear_v24.py` defines what happens during the trainin
 For example; The *on_validation_epoch_end* function defines what happens at the end of a validation epoch and *training_step* function defines what happens every step of the training.
 
 In the `utils` directory
-The `utils/dataUtils_flex.py` file prepares your data so it can be used for training, testing and validation. Data is normalized, before it is used as input for the model and it is reformatted it correct tensors. 
+The `utils/dataUtils_flex.py` file prepares your data so it can be used for training, testing and validation. Data is normalized, before it is used as input for the model and it is reformatted in the correct tensors. 
 
 The `utils/VisUtils_elegant.py` file defines how your data is plotted during training, validation and testing. 
 
@@ -184,7 +184,7 @@ Further visualization of the models, creating plots over multiple timesteps and 
 
 
 ## Credits
-This repository is built on top of the repositories: [EF4INCA](https://github.com/caglarkucuk/earthformer-multisource-to-inca/tree/main/data)) and [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer).
+This repository is built on top of the repositories: [EF4INCA](https://github.com/caglarkucuk/earthformer-multisource-to-inca/tree/main/data) and [Earthformer](https://github.com/amazon-science/earth-forecasting-transformer).
 
 
 <!-- ## Cite
